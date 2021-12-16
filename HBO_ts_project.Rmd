@@ -1,0 +1,88 @@
+---
+title: "Mutivariate_ts_HBO"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(nnfor)
+library(forecast)
+library(vars)
+library(tswge)
+library(RSNNS)
+
+#download data
+library(readr)  # for read_csv
+library(knitr)  # for kable
+myfile <- "https://raw.githubusercontent.com/dclark18/hbo_spike_analysis/main/conversion_date_hour.csv"
+
+imp <- read_csv(myfile)
+imp <- imp[1:1416,]
+
+#imp$Conversions[is.na(imp$Conversions)] <- 0
+#imp$Impressions[is.na(imp$Impressions)] <- 0
+```
+
+In this study we will be using mutivariate approaches to better understand the impact of tv impressions from HBO on other variables related to advertising conversion, viewership, and Search Engagement. 
+
+## Step 1
+Plot the data. Data runs from 9/15 - 11/15 with points set for the hourly level. 
+
+```{r regress, include=TRUE}
+
+plotts.sample.wge(imp$Impressions)
+plotts.sample.wge(imp$Conversions)
+```
+Since neither show a good sense of seasonality, let's difference both impressions and conversions
+
+```{r diff, include=TRUE}
+#impdif <- imp
+imp$Impressions <- diff(imp[1:1417,]$Impressions,1)
+imp$Conversions <- diff(imp[1:1417,]$Conversions,1)
+plot.ts(imp$Impressions, main = 'different variance')
+plot.ts(imp$Conversions, main = 'different variance')
+
+```
+
+Both are showing a lack of visual stationarity with a large fluctuation happening around hte middle of the data set with a tailing off in the more recent window. The autocorrelations for the impressions does imply a bit of a 24 hour cycle happening, but not super apparent at this level. Conversions are much less so. 
+
+```{r fit, include=TRUE}
+imp$Impressions <- imp$Impressions / 100
+
+ksfit = lm(Conversions~Impressions, data = imp)
+aic.wge(ksfit$residuals, p=0:30, q=0) #AIC says use P 29
+fit = arima(imp$Conversions, order = c(28,0,0), xreg=cbind(imp[,2:3]))
+#fit = arima(imp$Conversions, order = c(28,0,0), xreg=xreg, method="CSS")
+
+fit
+```
+
+Explore the existence of Cross Correlations between impressions and correlations. 
+
+```{r ccf, include = TRUE}
+ccf(imp$Conversions, imp$Impressions)
+```
+
+Looks like there's a lag of 24 on the hourly data. At an ACF of over 0.5.
+
+Let's now open the date file to see what the lag is between impressions and conversions grouped by date. 
+
+```{r dategroup, include = FALSE}
+#download data
+library(readr)  # for read_csv
+library(knitr)  # for kable
+myfile <- "https://raw.githubusercontent.com/dclark18/hbo_spike_analysis/main/conversionsimpressionsbydate.csv"
+
+df <- read_csv(myfile)
+
+df$Conversions[is.na(df$Conversions)] <- 0
+```
+
+
+Now let's perform a CCF to see how the lags shape out
+
+```{r ccf2, include=TRUE}
+
+ccf(df$Conversions, imp$Impressions)
+
+```
